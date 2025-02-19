@@ -13,6 +13,8 @@ router.get('/:videoId', async (req, res) => {
     let retryCount = 0;
     let currentRetryDelayMs = INITIAL_RETRY_DELAY_MS;
 
+    console.log(`[Audio Route] Request received for videoId: ${videoId}`); // <-- Added log at start of route
+
     async function processAudioWithRetry() {
         // --- Random Delay ---
         const delayMs = Math.random() * (5000 - 2000) + 2000;
@@ -21,17 +23,27 @@ router.get('/:videoId', async (req, res) => {
 
         console.log(`[Audio Route] Processing videoId: ${videoId}, Attempt: ${retryCount + 1}`);
 
-        const ytdlp = spawn('yt-dlp', [
-            '-x',
-            '--audio-format', 'mp3',
-            '--quiet',
-            '--cookies', path.join(__dirname, 'cookies.txt'),
-            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', // User-Agent (Remember to update version!)
-            '--min-sleep-interval', '42',  // Añadido intervalo de sueño mínimo
-            '--max-sleep-interval', '420', // Añadido intervalo de sueño máximo
-            '-o', '-',
-            `https://www.youtube.com/watch?v=${videoId}`
-        ]);
+        let ytdlp; // Declare ytdlp outside try-catch to access in error handling
+        try {
+            ytdlp = spawn('yt-dlp', [
+                '-x',
+                '--audio-format', 'mp3',
+                '--quiet',
+                 '--cookies', path.join(__dirname, 'cookies.txt'), // <-- Commented out cookies for simplification in local testing
+                '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', // User-Agent (Remember to update version!)
+                 '--min-sleep-interval', '2',  // <-- Commented out sleep intervals for simplification in local testing
+                 '--max-sleep-interval', '8', // <-- Commented out sleep intervals for simplification in local testing
+                '-o', '-',
+                `https://www.youtube.com/watch?v=${videoId}`
+            ]);
+        } catch (spawnError) { // <-- Catch errors when spawning yt-dlp itself
+            console.error(`[yt-dlp Spawn Error]: Error spawning yt-dlp process:`, spawnError); // <-- Log spawn error
+            if (!res.headersSent) {
+                return res.status(500).send('Internal server error: Could not start yt-dlp process.'); // Return to prevent further execution
+            }
+            return; // Stop further execution in case headers were already sent somehow
+        }
+
 
         res.setHeader('Content-Type', 'audio/mpeg');
         res.setHeader('Content-Disposition', 'inline; filename="audio.mp3"');
@@ -85,19 +97,19 @@ router.get('/:videoId', async (req, res) => {
         });
 
         ytdlp.on('close', (code) => {
-            console.log(`[yt-dlp process closed] videoId: ${videoId}, code: ${code}, Attempt ${retryCount + 1}`);
+            console.log(`[yt-dlp process closed] videoId: ${videoId}, code: ${code}, Attempt ${retryCount + 1}, Exit Code: ${code}`); // <-- Added exit code to log
             if (code !== 0 && !res.headersSent) {
                 res.status(500).send('Internal server error processing audio.');
             }
         });
 
-        req.on('close', () => {
-            console.log(`[Request Aborted] Request for videoId: ${videoId} aborted by client. (Attempt ${retryCount + 1})`);
-            if (ytdlp) {
-                ytdlp.kill();
-                console.log(`[yt-dlp process killed] Process for videoId: ${videoId} terminated due to client abort. (Attempt ${retryCount + 1})`);
-            }
-        });
+        req.on('close', () => { // <-- Commented out req.on('close') for debugging
+             console.log(`[Request Aborted] Request for videoId: ${videoId} aborted by client. (Attempt ${retryCount + 1})`);
+             if (ytdlp) {
+                 ytdlp.kill();
+                 console.log(`[yt-dlp process killed] Process for videoId: ${videoId} terminated due to client abort. (Attempt ${retryCount + 1})`);
+             }
+         });
     } // End of processAudioWithRetry function
 
     processAudioWithRetry(); // Start processing (with retries) by calling the function!

@@ -13,7 +13,10 @@ router.get('/:videoId', async (req, res) => {
     let retryCount = 0;
     let currentRetryDelayMs = INITIAL_RETRY_DELAY_MS;
 
-    console.log(`[Audio Route] Request received for videoId: ${videoId}`); // <-- Added log at start of route
+    console.log(`[Audio Route] Request received for videoId: ${videoId}`);
+
+    res.setHeader('Content-Type', 'audio/mpeg'); // Set headers here, BEFORE calling processAudioWithRetry
+    res.setHeader('Content-Disposition', 'inline; filename="audio.mp3"');
 
     async function processAudioWithRetry() {
         // --- Random Delay ---
@@ -23,30 +26,26 @@ router.get('/:videoId', async (req, res) => {
 
         console.log(`[Audio Route] Processing videoId: ${videoId}, Attempt: ${retryCount + 1}`);
 
-        let ytdlp; // Declare ytdlp outside try-catch to access in error handling
+        let ytdlp;
         try {
             ytdlp = spawn('yt-dlp', [
                 '-x',
                 '--audio-format', 'mp3',
                 '--quiet',
-                 '--cookies', path.join(__dirname, 'cookies.txt'), // <-- Commented out cookies for simplification in local testing
-                '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', // User-Agent (Remember to update version!)
-                 '--min-sleep-interval', '2',  // <-- Commented out sleep intervals for simplification in local testing
-                 '--max-sleep-interval', '8', // <-- Commented out sleep intervals for simplification in local testing
+                '--cookies', path.join(__dirname, 'cookies.txt'), // <-- Re-enabled cookies for deployment
+                '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                '--min-sleep-interval', '2',  // <-- Re-enabled sleep intervals for deployment
+                '--max-sleep-interval', '6', // <-- Re-enabled sleep intervals for deployment
                 '-o', '-',
                 `https://www.youtube.com/watch?v=${videoId}`
             ]);
-        } catch (spawnError) { // <-- Catch errors when spawning yt-dlp itself
-            console.error(`[yt-dlp Spawn Error]: Error spawning yt-dlp process:`, spawnError); // <-- Log spawn error
+        } catch (spawnError) {
+            console.error(`[yt-dlp Spawn Error]: Error spawning yt-dlp process:`, spawnError);
             if (!res.headersSent) {
-                return res.status(500).send('Internal server error: Could not start yt-dlp process.'); // Return to prevent further execution
+                return res.status(500).send('Internal server error: Could not start yt-dlp process.');
             }
-            return; // Stop further execution in case headers were already sent somehow
+            return;
         }
-
-
-        res.setHeader('Content-Type', 'audio/mpeg');
-        res.setHeader('Content-Disposition', 'inline; filename="audio.mp3"');
 
         ytdlp.stdout.pipe(res);
 
@@ -60,9 +59,16 @@ router.get('/:videoId', async (req, res) => {
 
                 if (retryCount <= MAX_RETRIES) {
                     setTimeout(async () => {
-                        currentRetryDelayMs *= 2; // Exponential backoff
-                        console.log(`[Retry] Re-attempting processing for videoId: ${videoId}, Attempt: ${retryCount + 1}, after delay of ${currentRetryDelayMs / 1000} seconds.`);
-                        await processAudioWithRetry(); // Recursive retry
+                        if (!res.headersSent) { // Check if headers are already sent before retrying
+                            currentRetryDelayMs *= 2;
+                            console.log(`[Retry] Re-attempting processing for videoId: ${videoId}, Attempt: ${retryCount + 1}, after delay of ${currentRetryDelayMs / 1000} seconds.`);
+                            await processAudioWithRetry(); // Recursive retry
+                        } else {
+                            console.warn("[Warning] Headers already sent, cannot retry for videoId:", videoId, "(Headers Sent Error during Retry).");
+                            if (!res.headersSent) { // Double check before sending error (should not be needed)
+                                res.status(500).send('Error processing audio: Internal server error (Headers already sent, retry impossible).');
+                            }
+                        }
                     }, currentRetryDelayMs);
                 } else {
                     console.error(`[Error] Max retries reached (${MAX_RETRIES}) for videoId: ${videoId}. Giving up.`);
@@ -97,22 +103,22 @@ router.get('/:videoId', async (req, res) => {
         });
 
         ytdlp.on('close', (code) => {
-            console.log(`[yt-dlp process closed] videoId: ${videoId}, code: ${code}, Attempt ${retryCount + 1}, Exit Code: ${code}`); // <-- Added exit code to log
+            console.log(`[yt-dlp process closed] videoId: ${videoId}, code: ${code}, Attempt ${retryCount + 1}, Exit Code: ${code}`);
             if (code !== 0 && !res.headersSent) {
                 res.status(500).send('Internal server error processing audio.');
             }
         });
 
-        req.on('close', () => { // <-- Commented out req.on('close') for debugging
-             console.log(`[Request Aborted] Request for videoId: ${videoId} aborted by client. (Attempt ${retryCount + 1})`);
-             if (ytdlp) {
-                 ytdlp.kill();
-                 console.log(`[yt-dlp process killed] Process for videoId: ${videoId} terminated due to client abort. (Attempt ${retryCount + 1})`);
-             }
-         });
-    } // End of processAudioWithRetry function
+        req.on('close', () => {
+            console.log(`[Request Aborted] Request for videoId: ${videoId} aborted by client. (Attempt ${retryCount + 1})`);
+            if (ytdlp) {
+                ytdlp.kill();
+                console.log(`[yt-dlp process killed] Process for videoId: ${videoId} terminated due to client abort. (Attempt ${retryCount + 1})`);
+            }
+        });
+    }
 
-    processAudioWithRetry(); // Start processing (with retries) by calling the function!
+    processAudioWithRetry();
 });
 
 module.exports = router;

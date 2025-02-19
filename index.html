@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YT Audio Player</title>
+</head>
+<body>
+  <h1>YT Audio Player</h1>
+  <form id="audioForm">
+    <label for="videoId">YouTube Video ID:</label>
+    <input type="text" id="videoId" name="videoId" required>
+    <button type="submit">Play Audio</button>
+  </form>
+  <audio id="audioPlayer" controls></audio>
+
+  <script>
+    document.getElementById('audioForm').addEventListener('submit', function(event) {
+      event.preventDefault();
+      const videoId = document.getElementById('videoId').value;
+      const audioPlayer = document.getElementById('audioPlayer');
+      audioPlayer.src = `/audio/${videoId}`;
+      audioPlayer.load();
+      
+      // Esperar a que el audio esté listo para reproducirse
+      audioPlayer.addEventListener('canplay', function() {
+        audioPlayer.play();
+      }, { once: true });
+    });
+  </script>
+</body>
+</html>

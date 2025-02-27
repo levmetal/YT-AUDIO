@@ -11,17 +11,16 @@ Dockerized: Easily deployable using Docker.
 
 ## Getting Started
 
-<ins> 
-Prerequisites
-</ins> 
+<ins>Prerequisites</ins> 
+
 **Node.js**
 **Docker**
 
-<ins> 
-  Docker
-</ins>
+<ins>Docker</ins>
+
 Build the Docker image: `docker build -t yt-audio .`
-un the Docker container:`docker run -p 3000:3000 yt-audio`
+un the Docker container: `docker run -p 3000:3000 yt-audio`
+
 
 Open your browser and navigate to http://localhost:3000.
 

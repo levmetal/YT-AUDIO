@@ -1,27 +1,33 @@
-const express = require('express');
-const cors = require('cors');
-const rateLimit = require('express-rate-limit');
-const path = require('path');
-const audioRoutes = require('./routes/audio');
+import express from 'express';
+import cors from 'cors';
+import rateLimit from 'express-rate-limit';
+import path from 'path';
+import { fileURLToPath } from 'url'; // <-- Import fileURLToPath
+import audioRoutes from './routes/audio.js';
 
 const app = express();
 const port = process.env.PORT || 3000;
 
+// --- For fixing __dirname is not defined in ES modules ---
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+// --- End of __dirname fix ---
+
+
 // Middlewares
 app.use(cors());
 app.use(rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutos
-    max: 100, // Límite de 100 solicitudes por IP por ventana de 15 minutos
-    message: 'Demasiadas solicitudes desde esta IP, por favor intenta de nuevo en 15 minutos.' // Mensaje personalizado para rate limit
+    windowMs: 15 * 60 * 1000, 
+    max: 100, 
+    message: 'Too many request from this ip' 
 }));
+//for frontend integration
+app.use(express.static(path.join(__dirname, '../'))); 
 
-// Servir el archivo index.html (para la interfaz frontend si la tienes)
-app.use(express.static(path.join(__dirname, '../')));
 
-// Usar las rutas de audio (donde se define la lógica de yt-dlp)
 app.use('/audio', audioRoutes);
 
-// Iniciar servidor
+
 app.listen(port, () => {
-    console.log(`Servidor escuchando en http://localhost:${port}`);
+    console.log(`listening in http://localhost:${port}`);
 });

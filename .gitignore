@@ -66,7 +66,8 @@ Dockerfile
 
 # MacOS files
 .DS_Store
-
+#cookies
+cookies.txt
 # Python virtual environment
 venv/
 __pycache__/
